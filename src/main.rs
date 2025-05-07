@@ -90,6 +90,12 @@ struct PublishIdEndpoint {
 struct StatusResponse {
     #[serde(rename = "NetworkStatus")]
     network_status: NetworkStatus,
+    #[serde(rename = "SystemInfo")]
+    system_info: SystemInfo,
+}
+#[derive(Deserialize)]
+struct SystemInfo {
+    omnect_device_service_version: String,
 }
 
 #[derive(Deserialize)]
@@ -160,6 +166,12 @@ async fn main() {
         .expect("UI_PORT missing")
         .parse::<u64>()
         .expect("UI_PORT format");
+
+    let ods_socket_path = std::env::var("SOCKET_PATH").expect("env SOCKET_PATH is missing");
+
+    if let Some(ods_version) = get_ods_version(&ods_socket_path).await {
+        debug!("ods version: {}", ods_version);
+    }
 
     create_module_certificate().await;
 
@@ -467,6 +479,23 @@ async fn get_ip_address(ods_socket_path: &str) -> Option<String> {
         }
         Err(e) => {
             error!("get ip address failed: {e:#}");
+            None
+        }
+    }
+}
+
+async fn get_ods_version(ods_socket_path: &str) -> Option<String> {
+    match socket_client::get_with_empty_body("/status/v1", ods_socket_path).await {
+        Ok(response) => {
+            let body = response.into_body();
+            let body_bytes = body.try_into_bytes().unwrap();
+            let status_response: StatusResponse =
+                serde_json::from_slice(&body_bytes).expect("StatusResponse not possible");
+
+            Some(status_response.system_info.omnect_device_service_version)
+        }
+        Err(e) => {
+            error!("get ods version failed: {e:#}");
             None
         }
     }
